@@ -23,40 +23,6 @@ public class HDFS_Test {
     }
 
     /**
-     * 复制文件到指定路径
-     * 若路径已存在，则进行覆盖
-     */
-    private static void copyFromLocalFile(Configuration conf, String localFilePath, String remoteFilePath) throws IOException {
-        FileSystem fs = FileSystem.get(conf);
-        Path localPath = new Path(localFilePath);
-        Path remotePath = new Path(remoteFilePath);
-        /* fs.copyFromLocalFile 第一个参数表示是否删除源文件，第二个参数表示是否覆盖 */
-        fs.copyFromLocalFile(false, true, localPath, remotePath);
-        fs.close();
-    }
-
-    /**
-     * 追加文件内容
-     */
-    private static void appendToFile(Configuration conf, String localFilePath, String remoteFilePath) throws IOException {
-        FileSystem fs = FileSystem.get(conf);
-        Path remotePath = new Path(remoteFilePath);
-        /* 创建一个文件读入流 */
-        FileInputStream in = new FileInputStream(localFilePath);
-        /* 创建一个文件输出流，输出的内容将追加到文件末尾 */
-        FSDataOutputStream out = fs.append(remotePath);
-        /* 读写文件内容 */
-        byte[] data = new byte[1024];
-        int read;
-        while ((read = in.read(data)) > 0) {
-            out.write(data, 0, read);
-        }
-        out.close();
-        in.close();
-        fs.close();
-    }
-
-    /**
      * 统计某单词的数量
      * 用法：wordCount(conf,remoteFilePath,"hello")
      */
@@ -89,7 +55,7 @@ public class HDFS_Test {
      * 统计词频
      * 用法:multiWordCount(conf,remoteFilePath)
      */
-    private static void multiWordCount(Configuration conf, String remoteFilePath) throws IOException {
+    private static void multiWordCount(Configuration conf, String remoteFilePath, String dstFilePath) throws IOException {
         System.out.println("==========词频统计==========");
         FileSystem fs = FileSystem.get(conf);
         if (test(conf, remoteFilePath)) {
@@ -115,9 +81,13 @@ public class HDFS_Test {
                         }
                     }
                 }
-                // 遍历HashMap,输出结果
+
+                // 遍历HashMap,输出结果，并把结果上传到云端
+                FileSystem fsDst = FileSystem.get(URI.create(dstFilePath), conf);
+                FSDataOutputStream fsDataOutputStream = fsDst.create(new Path(dstFilePath));
                 for (String key : hashMap.keySet()) {
-                    System.out.println(key + ":" + hashMap.get(key));
+                    System.out.println("key:"+key+"\t"+"values:"+hashMap.get(key));
+                    fsDataOutputStream.writeBytes("key:"+key+"\t"+"values:"+hashMap.get(key));
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -177,7 +147,6 @@ public class HDFS_Test {
                 }
                 fsDataInputStream.close();
                 System.out.println("\n");
-//                printStream.close();
             }
         }
         fsDataOutputStream.close();
@@ -188,14 +157,15 @@ public class HDFS_Test {
     /**
      * 合并含word的文件，并统计词频
      * 用法：doMergeAndWordCount(conf,remoteDir,dstFilePath);
-     * @param conf 配置
-     * @param remoteDir HDFS目录
+     *
+     * @param conf        配置
+     * @param remoteDir   HDFS目录
      * @param dstFilePath 目的文件
-     * @throws IOException IO
+     * @throws IOException IOException
      */
     private static void doMergeAndWordCount(Configuration conf, String remoteDir, String dstFilePath) throws IOException {
         doMerge(conf, remoteDir, dstFilePath);
-        multiWordCount(conf, dstFilePath);
+        multiWordCount(conf, dstFilePath, dstFilePath);
     }
 
     /**
@@ -257,7 +227,7 @@ public class HDFS_Test {
             System.out.println("大小: " + s.getLen());
             /* 返回的是时间戳,转化为时间日期格式 */
             Long timeStamp = s.getModificationTime();
-            SimpleDateFormat format =  new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             String date = format.format(timeStamp);
             System.out.println("时间: " + date);
         }
@@ -280,7 +250,7 @@ public class HDFS_Test {
             System.out.println("大小: " + s.getLen());
             /* 返回的是时间戳,转化为时间日期格式 */
             Long timeStamp = s.getModificationTime();
-            SimpleDateFormat format =  new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             String date = format.format(timeStamp);
             System.out.println("时间: " + date);
             System.out.println();
@@ -300,32 +270,7 @@ public class HDFS_Test {
 
         String remoteDir = "hdfs://localhost:9000/user/hadoop/test"; // 要合并的文件所在的HDFS路径
         String dstFilePath = "hdfs://localhost:9000/user/hadoop/output/output.txt";// 存到output/output.txt
-//        String choice = "append";    // 若文件存在则追加到文件末尾
-////      String choice = "overwrite";    // 若文件存在则覆盖
-//
-//        try {
-//            /* 判断文件是否存在 */
-//            Boolean fileExists = false;
-//            if (test(conf, remoteFilePath)) {
-//                fileExists = true;
-//                System.out.println(remoteFilePath + " 已存在.");
-//            } else {
-//                System.out.println(remoteFilePath + " 不存在.");
-//            }
-//            /* 进行处理 */
-//            if (!fileExists) { // 文件不存在，则上传
-//                copyFromLocalFile(conf, localFilePath, remoteFilePath);
-//                System.out.println(localFilePath + " 已上传至 " + remoteFilePath);
-//            } else if (choice.equals("overwrite")) {    // 选择覆盖
-//                copyFromLocalFile(conf, localFilePath, remoteFilePath);
-//                System.out.println(localFilePath + " 已覆盖 " + remoteFilePath);
-//            } else if (choice.equals("append")) {   // 选择追加
-//                appendToFile(conf, localFilePath, remoteFilePath);
-//                System.out.println(localFilePath + " 已追加至 " + remoteFilePath);
-//            }
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
 
+        doMergeAndWordCount(conf,remoteDir,dstFilePath);
     }
 }
