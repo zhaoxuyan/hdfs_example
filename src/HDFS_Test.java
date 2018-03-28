@@ -5,6 +5,7 @@ import org.apache.hadoop.io.IOUtils;
 import java.io.*;
 import java.net.URI;
 import java.net.URL;
+import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.StringTokenizer;
 
@@ -126,34 +127,17 @@ public class HDFS_Test {
     }
 
     /**
-     * 输出HDFS中指定文件本文到终端中
-     * 用法:catFromRemote(dstFilePath);
-     */
-    private static void catFromRemote(String remoteFilePath) {
-        InputStream in = null;
-        try {
-            /* 通过URL对象打开数据流，从中读取数据 */
-            in = new URL(remoteFilePath).openStream();
-            IOUtils.copyBytes(in, System.out, 4096, false);
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            IOUtils.closeStream(in);
-        }
-    }
-
-    /**
      * 合并文件
      * 过滤：含有word的文件
      */
-    private static void doMerge(Configuration conf, String remoteDic, String dstFilePath) throws IOException {
+    private static void doMerge(Configuration conf, String remoteDir, String dstFilePath) throws IOException {
         System.out.println("==========合并文件==========");
         // 要合并的文件所在的HDFS路径
-        FileSystem fsSource = FileSystem.get(URI.create(remoteDic), conf);
+        FileSystem fsSource = FileSystem.get(URI.create(remoteDir), conf);
         // 合并后的 目的文件 路径
         FileSystem fsDst = FileSystem.get(URI.create(dstFilePath), conf);
         // 过滤掉输入目录中后缀为.abc的文件
-        FileStatus[] sourceStatus = fsSource.listStatus(new Path(remoteDic), new MyPathFilter(".*\\abc"));
+        FileStatus[] sourceStatus = fsSource.listStatus(new Path(remoteDir), new MyPathFilter(".*\\abc"));
         // 创建目的文件
         FSDataOutputStream fsDataOutputStream = fsDst.create(new Path(dstFilePath));
         // 下面分别读取过滤之后的每个文件的内容，并输出到同一个文件中
@@ -202,17 +186,119 @@ public class HDFS_Test {
     }
 
     /**
+     * 合并含word的文件，并统计词频
+     * 用法：doMergeAndWordCount(conf,remoteDir,dstFilePath);
+     * @param conf 配置
+     * @param remoteDir HDFS目录
+     * @param dstFilePath 目的文件
+     * @throws IOException IO
+     */
+    private static void doMergeAndWordCount(Configuration conf, String remoteDir, String dstFilePath) throws IOException {
+        doMerge(conf, remoteDir, dstFilePath);
+        multiWordCount(conf, dstFilePath);
+    }
+
+    /**
+     * 下载文件到本地
+     * 判断本地路径是否已经存在,若已存在,则进行重命名
+     */
+    private static void downloadFromRemote(Configuration conf, String remoteFilePath, String localFilePath) throws IOException {
+        FileSystem fs = FileSystem.get(conf);
+        Path remotePath = new Path(remoteFilePath);
+        File f = new File(localFilePath);
+        /* 如果文件名存在，自动重命名(在文件名后面加上 _0, _1 ...) */
+        if (f.exists()) {
+            System.out.println(localFilePath + " 已存在.");
+            Integer i = 0;
+            while (true) {
+                f = new File(localFilePath + "_" + i.toString());
+                if (!f.exists()) {
+                    localFilePath = localFilePath + "_" + i.toString();
+                    break;
+                }
+            }
+            System.out.println("将重新命名为: " + localFilePath);
+        }
+
+        // 下载文件到本地
+        Path localPath = new Path(localFilePath);
+        fs.copyToLocalFile(remotePath, localPath);
+        fs.close();
+    }
+
+    /**
+     * 输出HDFS中指定文件本文到终端中
+     * 用法:catFromRemote(dstFilePath);
+     */
+    private static void catFromRemote(String remoteFilePath) {
+        InputStream in = null;
+        try {
+            /* 通过URL对象打开数据流，从中读取数据 */
+            in = new URL(remoteFilePath).openStream();
+            IOUtils.copyBytes(in, System.out, 4096, false);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            IOUtils.closeStream(in);
+        }
+    }
+
+    /**
+     * 显示HDFS中指定的文件夹下，所有文件的读写权限,大小,创建时间,路径
+     * 用法：showHDFSInfo(conf,remoteDir);
+     */
+    private static void showHDFSInfo(Configuration conf, String remoteDir) throws IOException {
+        FileSystem fs = FileSystem.get(conf);
+        Path remotePath = new Path(remoteDir);
+        FileStatus[] fileStatuses = fs.listStatus(remotePath);
+        for (FileStatus s : fileStatuses) {
+            System.out.println("路径: " + s.getPath().toString());
+            System.out.println("权限: " + s.getPermission().toString());
+            System.out.println("大小: " + s.getLen());
+            /* 返回的是时间戳,转化为时间日期格式 */
+            Long timeStamp = s.getModificationTime();
+            SimpleDateFormat format =  new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            String date = format.format(timeStamp);
+            System.out.println("时间: " + date);
+        }
+        fs.close();
+    }
+
+    /**
+     * 递归的显示
+     */
+    private static void showHDFSInfo_R(Configuration conf, String remoteDir) throws IOException {
+        FileSystem fs = FileSystem.get(conf);
+        Path dirPath = new Path(remoteDir);
+        /* 递归获取目录下的所有文件 */
+        RemoteIterator<LocatedFileStatus> remoteIterator = fs.listFiles(dirPath, true);
+        /* 输出每个文件的信息 */
+        while (remoteIterator.hasNext()) {
+            FileStatus s = remoteIterator.next();
+            System.out.println("路径: " + s.getPath().toString());
+            System.out.println("权限: " + s.getPermission().toString());
+            System.out.println("大小: " + s.getLen());
+            /* 返回的是时间戳,转化为时间日期格式 */
+            Long timeStamp = s.getModificationTime();
+            SimpleDateFormat format =  new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            String date = format.format(timeStamp);
+            System.out.println("时间: " + date);
+            System.out.println();
+        }
+        fs.close();
+    }
+
+    /**
      * 主函数
      * 任务：将文件中有hello的文件整合打包，并统计词频
      */
-
     public static void main(String[] args) throws IOException {
         Configuration conf = new Configuration();
         conf.set("fs.default.name", "hdfs://localhost:9000");
         String localFilePath = "/Users/zhaoxuyan/IdeaProjects/hdfs_example/word.txt";  // 本地路径
         String remoteFilePath = "/user/hadoop/test/test.txt";  // HDFS路径
 
-        String remoteDic = "hdfs://localhost:9000/user/hadoop/test"; // 要合并的文件所在的HDFS路径
+        String remoteDir = "hdfs://localhost:9000/user/hadoop/test"; // 要合并的文件所在的HDFS路径
         String dstFilePath = "hdfs://localhost:9000/user/hadoop/output/output.txt";// 存到output/output.txt
 //        String choice = "append";    // 若文件存在则追加到文件末尾
 ////      String choice = "overwrite";    // 若文件存在则覆盖
@@ -241,7 +327,5 @@ public class HDFS_Test {
 //            e.printStackTrace();
 //        }
 
-        doMerge(conf, remoteDic, dstFilePath);
-        multiWordCount(conf, dstFilePath);
     }
 }
